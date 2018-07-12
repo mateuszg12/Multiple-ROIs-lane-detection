@@ -1,20 +1,14 @@
 #pragma once
 
-<<<<<<< HEAD
 //#define IDS_MODE
-=======
->>>>>>> IDS
 //#define VID_MODE
 #define IDS_MODE
 #define DEBUG_MODE
-<<<<<<< HEAD
 #define VERBOSE_MODE
 //#define ADAPTIVE_MODE
 //#define STOP_L_MODE
-=======
 //#define VERBOSE_MODE
 //#define AUTO_THRESH
->>>>>>> IDS
 #define FPS_COUNT
 //#define FUNCTION_TIMING
 //#define TEST_SHM
@@ -45,13 +39,10 @@
 #ifdef VID_MODE        // File
 #define CAM_RES_X 640
 #define CAM_RES_Y 360
-<<<<<<< HEAD
 #else                   // Kurokesu
 #define CAMERA_INDEX 1
-=======
-#else
+
 #ifndef IDS_MODE      // Kurokesu
->>>>>>> IDS
 #define CAM_RES_X 640
 #define CAM_RES_Y 360
 #else
