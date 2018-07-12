@@ -81,18 +81,16 @@ LaneDetector::LaneDetector()
     frame_stop_reduced.create(ROI_STOP_Y, 1, CV_8UC1);
 }
 
-void LaneDetector::calculate_bird_var(cv::Mat frame_ref, cv::Mat frame_ref_inv)
+void LaneDetector::calculate_bird_var(cv::Mat &frame_ref, cv::Mat &frame_inv_ref)
 {
     alpha = ((double)alpha_i - 90.)*CV_PI / 180;
-    f = (double)f_i;
-
     dist = (double)dist_i;
-    dist_inv = (double)dist_inv_i;
+    f = (double)f_i;
 
     taille = frame_ref.size();
     w = (double)taille.width, h = (double)taille.height;
 
-    taille_inv = frame_ref_inv.size();
+    taille_inv = frame_inv_ref.size();
     w_inv = (double)taille_inv.width, h_inv = (double)taille_inv.height;
 
     A1 = (cv::Mat_<float>(4, 3) <<
@@ -108,7 +106,6 @@ void LaneDetector::calculate_bird_var(cv::Mat frame_ref, cv::Mat frame_ref_inv)
         0, 0, 0, 1);
 
     R = RX;
-
 
     T = (cv::Mat_<float>(4, 4) <<
         1, 0, 0, 0,
@@ -140,15 +137,17 @@ void LaneDetector::calculate_bird_var(cv::Mat frame_ref, cv::Mat frame_ref_inv)
         0, 0, 1, 0
         );    void pack_points();    void pack_points();
 
+
+    tmp_rect = cv::Rect(0, 0, CAM_RES_X, CAM_RES_Y - cut_y);
+
     transfo = K * (T * (R * A1));
     transfo_inv = K_inv * (T_inv * (R * A1_inv));
 }
 
 void LaneDetector::bird_eye(cv::Mat &input, cv::Mat &output)
 {
-    cv::Mat tmp_x(2*CAM_RES_Y, CAM_RES_X, CV_8UC3);
-    cv::warpPerspective(input, tmp_x, transfo, taille, cv::INTER_CUBIC | cv::WARP_INVERSE_MAP);
-    tmp_x(cv::Rect(0,0,CAM_RES_X, CAM_RES_Y - cut_y)).copyTo(output);
+    cv::warpPerspective(input, tmp_mat, transfo, taille, cv::INTER_CUBIC | cv::WARP_INVERSE_MAP);
+    tmp_mat(tmp_rect).copyTo(output);
 }
 
 void LaneDetector::bird_eye_inverse(cv::Mat &input, cv::Mat &output)
@@ -259,9 +258,7 @@ void LaneDetector::search_stop_line(DetectionArea area_line[], cv::Mat &input, i
                     {
                             stop_distance = i;
                             stop_detected = true;
-#ifdef VERBOSE_MODE
                             std::cout << "STOP DETECTED: " << ROI_STOP_Y - stop_distance << std::endl;
-#endif
                             return;
                     }
                 }
