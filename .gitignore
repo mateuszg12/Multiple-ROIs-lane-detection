@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Qt
+build/
+*.user*
+*.md~
+*.c~
+*.h~
+*.cpp~
+*.hpp~
+*.txt~
