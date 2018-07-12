@@ -1,8 +1,33 @@
-#include "ids.hpp"
-//Function that initialize uEye camera
-extern pthread_cond_t algorithm_signal;
-extern pthread_mutex_t algorithm_signal_mutex;
+#include "ids.h"
 
+pthread_cond_t algorithm_signal = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t algorithm_signal_mutex = PTHREAD_MUTEX_INITIALIZER;
+IDS ids;
+
+void* ids_thread_f(void *x){
+
+    while(true){
+        ids.frame_loop();
+    }
+    return NULL;
+}
+
+void IDS::init(){
+    initialize_camera();
+    setting_auto_params();
+    change_params();
+    create_trackbars();
+    update_params();
+    pthread_mutex_init(&algorithm_signal_mutex,NULL);
+
+    int x = 0;
+    if (pthread_create(&frame_thread,NULL,ids_thread_f,&x)){
+        std::cout<<"Error creating frame-grabbing thread"<<std::endl;
+    }
+    else{
+        std::cout << "Frame-grabbing thread started" << std::endl;
+    }
+}
 void IDS::initialize_camera() {
     m_hCamera = (HIDS)0;
     pthread_mutex_init(&frame_mutex,NULL);
@@ -15,7 +40,7 @@ void IDS::initialize_camera() {
     }
 
     // Setting the pixels clock
-    UINT nPixelClockDefault = 21;
+    UINT nPixelClockDefault = 25;
     nRet = is_PixelClock(m_hCamera, IS_PIXELCLOCK_CMD_SET, (void*)&PixelClock, sizeof(PixelClock));
 
     if (nRet == IS_SUCCESS) {
@@ -81,6 +106,7 @@ void IDS::initialize_camera() {
     } else {
         std::cout << "Error in allocating memory" << std::endl;
     }
+    is_EnableAutoExit(m_hCamera, IS_ENABLE_AUTO_EXIT);
 }
 // Capture a frame from IDS
 void IDS::setAlgorithmReady(){
@@ -97,7 +123,6 @@ void IDS::frameEvent(){
 }
 void IDS::frame_loop()
 {
-//    pthread_cond_wait(&frame_signal, &signal_mutex);
     INT ret = is_WaitEvent(m_hCamera, IS_SET_EVENT_FRAME, 1000);
     if(ret == IS_SUCCESS){
         is_DisableEvent (m_hCamera, IS_SET_EVENT_FRAME);
@@ -121,11 +146,11 @@ void IDS::ProcessFrame ()
 
     if (algorithm_ready)
     {
-        pthread_mutex_lock(&frame_mutex);
 
-        if (is_GetFramesPerSecond (m_hCamera, &fps) == IS_SUCCESS){
+        pthread_mutex_lock(&frame_mutex);
+        if (is_GetFramesPerSecond (m_hCamera, &fps) == IS_SUCCESS)
             updateFps (fps);
-        }
+        pthread_mutex_unlock(&frame_mutex);
 
 //        algorithm_ready = false;
         if (m_pLastBuffer)
@@ -136,39 +161,24 @@ void IDS::ProcessFrame ()
             nNum = _GetImageNum (m_pLastBuffer);
             INT nId = _GetImageID(m_pLastBuffer);
 
+            pthread_mutex_lock(&frame_mutex);
             ret = is_LockSeqBuf (m_hCamera, nNum, m_pLastBuffer);
             INT copy = is_CopyImageMem(m_hCamera, m_pLastBuffer, nId, (char*)ids_frame.ptr());
             ret |= is_UnlockSeqBuf (m_hCamera, nNum, m_pLastBuffer);
-
-
             pthread_mutex_unlock(&frame_mutex);
 
             pthread_mutex_lock(&algorithm_signal_mutex);
             pthread_cond_signal(&algorithm_signal);
             pthread_mutex_unlock(&algorithm_signal_mutex);
-
-//            char s[20];
-//            sprintf(s, "FPS: %lf", getFPS());
-//            cv::putText(ids_frame, s, cv::Point(752/2, 480-30), CV_FONT_HERSHEY_DUPLEX, 0.4, CV_RGB(0, 255, 0), 1.0);
-//            cv::imshow("frame window",ids_frame);
-//            cv::waitKey(1);
-
-            if(++cnt > 87){
-                static int frames = 0;
-                frames+=cnt;
-                cnt = 0;
-//                std::cout << "Copy status: " << copy << std::endl;
-//                std::cout << s << std::endl;
-//                std::cout << "Frames counter: " << frames << std::endl;
-            }
         }
-        else
-        pthread_mutex_unlock(&frame_mutex);
     }
 }
-uchar* IDS::get_frame() {
-///
-    return ids_frame.ptr();
+void IDS::get_frame_to(cv::Mat &output) {
+    pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
+
+    pthread_mutex_lock(&frame_mutex);
+    ids_frame.copyTo(output);
+    pthread_mutex_unlock(&frame_mutex);
 }
 HIDS IDS::getCameraHID(){
     return m_hCamera;
@@ -275,7 +285,7 @@ void IDS::update_params() {
     PixelClock = (UINT)pixelclock_slider;
     is_PixelClock(m_hCamera, IS_PIXELCLOCK_CMD_SET, (void*)&PixelClock, sizeof(PixelClock));
 
-    Exposure = (double)(exposure_slider/10);
+    Exposure = (double)(exposure_slider/30.);
     is_Exposure(m_hCamera, IS_EXPOSURE_CMD_SET_EXPOSURE, (void*)&Exposure, sizeof(Exposure));
 
     FPS = (double)fps_slider;
@@ -287,53 +297,77 @@ void IDS::update_params() {
     is_SetHWGainFactor(m_hCamera, IS_SET_RED_GAIN_FACTOR, Red_GAIN_Factor);
     Sharpness = (INT)sharpness_slider;
     is_EdgeEnhancement(m_hCamera, IS_EDGE_ENHANCEMENT_CMD_SET, &Sharpness, sizeof(Sharpness));
-
-
-
-
+    is_Gamma(m_hCamera, IS_GAMMA_CMD_SET, &Gamma, sizeof(Gamma));
 }
 
 //Enabling auto parameters
 void IDS::setting_auto_params() {
     double enable = 1;
     double disable = 0;
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_GAIN, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_WHITEBALANCE, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_FRAMERATE, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SHUTTER, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_GAIN, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_WHITEBALANCE, &enable, 0);
-    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_SHUTTER, &enable, 0);
+    double exposure_max = 1.0;
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_GAIN, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_WHITEBALANCE, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_FRAMERATE, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SHUTTER, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_GAIN, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_WHITEBALANCE, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_SHUTTER, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_ENABLE_AUTO_SENSOR_GAIN_SHUTTER, &disable, 0);
+    is_SetAutoParameter(m_hCamera, IS_SET_AUTO_SHUTTER_MAX, &exposure_max, 0);
+
+
 }
 
 //Changing camera setting and gettign default variables
 void IDS::change_params() {
-    is_Exposure(m_hCamera, IS_EXPOSURE_CMD_SET_EXPOSURE, (void*)&Exposure, sizeof(Exposure));
+//    is_Exposure(m_hCamera, IS_EXPOSURE_CMD_SET_EXPOSURE, (void*)&Exposure, sizeof(Exposure));
 
     is_SetFrameRate(m_hCamera, FPS, &NEWFPS);
 
     // Enable setting gain boost
-    int nRet = is_SetGainBoost(m_hCamera, IS_SET_GAINBOOST_ON);
-    if (nRet == IS_SUCCESS) {
-        std::cout << "Enabling Gain success" << std::endl;
-    }
+//    int nRet = is_SetGainBoost(m_hCamera, IS_SET_GAINBOOST_ON);
+//    if (nRet == IS_SUCCESS) {
+//        std::cout << "Enabling Gain success" << std::endl;
+//    }
     //Get gain factors
     Master_GAIN_Factor = is_SetHWGainFactor(m_hCamera, IS_GET_DEFAULT_MASTER_GAIN_FACTOR,100);
     Red_GAIN_Factor = is_SetHWGainFactor(m_hCamera, IS_GET_DEFAULT_RED_GAIN_FACTOR, 100);
     Green_GAIN_Factor = is_SetHWGainFactor(m_hCamera, IS_GET_DEFAULT_GREEN_GAIN_FACTOR, 100);
     Blue_GAIN_Factor = is_SetHWGainFactor(m_hCamera, IS_GET_DEFAULT_BLUE_GAIN_FACTOR, 100);
 
-    nRet = is_EdgeEnhancement(m_hCamera, IS_EDGE_ENHANCEMENT_CMD_GET_DEFAULT, &Sharpness, sizeof(Sharpness));
+    int nRet = is_EdgeEnhancement(m_hCamera, IS_EDGE_ENHANCEMENT_CMD_GET_DEFAULT, &Sharpness, sizeof(Sharpness));
     if (nRet == IS_SUCCESS) {
         std::cout << "Edge enhancement default success" << std::endl;
     }
     sharpness_slider = (UINT)Sharpness;
-    #ifdef HW_GAMMA
-        is_SetHardwareGamma (m_hCamera, IS_SET_HW_GAMMA_ON);
-    #endif
-    //nRet = is_Gamma(m_hCamera, IS_GAMMA_CMD_GET_DEFAULT, &Gamma, sizeof(Gamma));
-    //if (nRet == IS_SUCCESS) {
-    //	std::cout << "Gamma default success" << std::endl;
-    //}
+
+//    nRet = is_Gamma(m_hCamera, IS_GAMMA_CMD_GET_DEFAULT, &Gamma, sizeof(Gamma));
+//    if (nRet == IS_SUCCESS) {
+//        std::cout << "Gamma default success" << std::endl;
+//    }
 
 }
+
+void update_suwaki(int,void*){
+    ids.update_params();
+}
+
+//Creating in debug mode trackbars
+void IDS::create_trackbars(void){
+    cvNamedWindow("ids", 1);
+    cv::createTrackbar("Pixel", "ids", &pixelclock_slider, 40, update_suwaki);
+    cv::createTrackbar("Exposure", "ids", &exposure_slider, 30*30, update_suwaki);
+    cv::createTrackbar("FPS", "ids", &fps_slider, 100, update_suwaki);
+    cv::createTrackbar("Master", "ids", &Master_GAIN_Factor, 300, update_suwaki);
+    cv::setTrackbarMin("Master", "ids", 100);
+    cv::createTrackbar("Green", "ids", &Green_GAIN_Factor, 300, update_suwaki);
+    cv::setTrackbarMin("Green", "ids",100);
+    cv::createTrackbar("Red", "ids", &Red_GAIN_Factor, 300, update_suwaki);
+    cv::setTrackbarMin("Red", "ids", 100);
+    cv::createTrackbar("Blue", "ids", &Blue_GAIN_Factor, 300, update_suwaki);
+    cv::setTrackbarMin("Blue", "ids", 100);
+    cv::createTrackbar("Sharpness", "ids", &sharpness_slider, 9, update_suwaki);
+    cv::setTrackbarMin("Sharpness", "ids", 0);
+    cv::createTrackbar("Gamma", "ids", &Gamma, 300, update_suwaki);
+}
+

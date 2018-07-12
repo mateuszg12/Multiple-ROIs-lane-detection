@@ -8,12 +8,6 @@
 
 #include <include/def.hpp>
 
-#define DETECTION_NUMBER 4
-
-#define ROI_X_SEARCH 400
-#define ROI_X 120
-#define ROI_Y 50
-
 class DetectionArea
 {
 private:
@@ -22,7 +16,8 @@ public:
     cv::Rect roi;
     cv::Mat frame_roi;
     cv::Mat frame_reduced;
-    cv::Point middle;
+    cv::Point middle_roi;
+    cv::Point middle_detection;
     cv::Point left, right;
     uchar *p;
     int roi_x = ROI_X_SEARCH;
@@ -42,23 +37,42 @@ class LaneDetector
     // Birdeye
 public:
     int f_i = 200;
-    int dist_i = 235;
-    int alpha_i = 30;
+    int dist_i = 60;
+    int dist_inv_i = 230;
+    int alpha_i = 55;
+    int cut_y = 20;
 
 private:
     double f = (double)f_i;
-    double dist = (double)dist_i;
     double alpha = ((double)alpha_i - 90.)*CV_PI / 180;
 
+    double dist = (double)dist_i;
+    double dist_inv = (double)dist_inv_i;
+
     cv::Size taille;
+    cv::Size taille_inv;
+
     double w, h;
+    double w_inv, h_inv;
 
     cv::Mat A1;
     cv::Mat A2;
     cv::Mat RX;
+    cv::Mat RY;
+    cv::Mat RZ;
     cv::Mat R;
     cv::Mat T;
     cv::Mat K;
+
+    cv::Mat A1_inv;
+    cv::Mat A2_inv;
+    cv::Mat RX_inv;
+    cv::Mat RY_inv;
+    cv::Mat RZ_inv;
+    cv::Mat R_inv;
+    cv::Mat T_inv;
+    cv::Mat K_inv;
+
     cv::Mat transfo;
     cv::Mat transfo_inv;
 
@@ -87,10 +101,15 @@ public:
     uint32_t stop_distance = 0;
     bool display_stop_roi = true;
 
+    //Thresh calculation
+private:
+    cv::Rect tmp[DETECTION_NUMBER];
+    cv::Mat roi_thresh;
+
     // Methods
 public:
     LaneDetector();
-    void calculate_bird_var(cv::Mat frame_ref);
+    void calculate_bird_var(cv::Mat frame_ref, cv:: Mat frame_ref_inv);
     void bird_eye(cv::Mat &input, cv::Mat &output);
     void bird_eye_inverse(cv::Mat &input, cv::Mat &output);
     void binarize(cv::Mat &input, cv::Mat &output, int &thresh_low, int &thresh_high);
@@ -98,7 +117,8 @@ public:
     void closing(cv::Mat &input, cv::Mat &output);
     void apply_sobel(cv::Mat &input, cv::Mat &output);
     void correct_ROIs(DetectionArea input[], cv::Mat &frame);
+    void calculate_thresh(cv::Mat &frame, DetectionArea area_line[]);
     void search_stop_line(DetectionArea area_line[], cv::Mat &input, int thresh_stop);
-    void draw_data(cv::Mat &input, DetectionArea area_left_line[], DetectionArea area_right_line[]);
-    void pack_data(DetectionArea area_left_line[], DetectionArea area_right_line[], std::vector<cv::Point> &left_points, std::vector<cv::Point> &right_points);
+    void draw_data(cv::Mat &input, DetectionArea area_line[]);
+    void pack_data(DetectionArea area_left_line[], std::vector<cv::Point> &left_points);
 };

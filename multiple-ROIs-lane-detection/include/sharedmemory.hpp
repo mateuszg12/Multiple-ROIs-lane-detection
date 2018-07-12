@@ -16,7 +16,6 @@ class SharedMemory
     int mem_id;
     int mem_size;
     key_t  key;
-public:
     uint32_t *shared_variable;
     uint32_t *end_of_variable;
 

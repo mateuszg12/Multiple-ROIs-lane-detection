@@ -197,7 +197,7 @@ void SharedMemory::push_scene_data(bool reset_stm, bool red_light_visible, bool 
     uint32_t tmp[6];
 
     tmp[0] = 5;
-    //tmp[1] = reset_stm;
+    tmp[1] = reset_stm;
     tmp[2] = red_light_visible;
     tmp[3] = green_light_visible;
     tmp[4] = stop_line_detected;

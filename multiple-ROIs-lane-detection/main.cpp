@@ -4,11 +4,10 @@
 #include <mutex>
 
 #include <include/def.hpp>
-#include <include/ids.hpp>
+#include <include/ids.h>
+#include <include/kurokesu.hpp>
 #include <include/lanedetector.hpp>
-#include <include/stoplights.hpp>
 #include <include/sharedmemory.hpp>
-#include <pthread.h>
 
 #ifdef FUNCTION_TIMING
 #define INIT_TIMER auto start1 = std::chrono::high_resolution_clock::now();
@@ -27,26 +26,29 @@
 #endif
 
 // Custom handlers
-IDS ids;
+Kurokesu kurokesu;
 LaneDetector lanedetector;
-StopLightDetector lightDetector;
 SharedMemory shm_lane_points(50002, 5000);
 SharedMemory shm_usb_to_send(50003, 32);
 SharedMemory shm_watchdog(50004, 32);
 
+<<<<<<< HEAD
 pthread_cond_t algorithm_signal = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t algorithm_signal_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+=======
+>>>>>>> IDS
 // Frame for cv::Size info
-cv::Mat frame_ref(CAM_RES_Y, CAM_RES_X, CV_8UC1);
+cv::Mat frame_ref(1.8*CAM_RES_Y, CAM_RES_X, CV_8UC1);
+cv::Mat frame_ref_inv(CAM_RES_Y, CAM_RES_X, CV_8UC1);
 
 // Functions declarations
-void update_trackbar(int, void*);
-void update_params_1(int, void*);
-void *camera_thread(void *);
+void update_bird_eye(int, void*);
+void update_cam(int, void*);
 
 int main()
 {
+<<<<<<< HEAD
 #ifdef FUNCTION_TIMING
     INIT_TIMER
 #endif
@@ -63,31 +65,15 @@ int main()
     int thresh_hist = 40;
     int thresh_stop = 50;
 
+=======
+>>>>>>> IDS
 #ifndef VID_MODE
 #ifndef IDS_MODE
     // Camera init
-    cv::VideoCapture camera;
-    camera.open(CAMERA_INDEX, cv::CAP_V4L2);
-
-    // Check if camera is opened propely
-    if (!camera.isOpened())
-    {
-        std::cout << "Error could not open camera on port: " << CAMERA_INDEX << std::endl
-                  << "Closing app!" << std::endl;
-
-        camera.release();
+    if(!kurokesu.init())
         return 0;
-    }
-    else
-    {
-        // Set resolution
-        camera.set(cv::CAP_PROP_FRAME_WIDTH, CAM_RES_X);
-        camera.set(cv::CAP_PROP_FRAME_HEIGHT, CAM_RES_Y);
-
-        // Set coding type of frames (Kurokesu)
-        camera.set(cv::CAP_PROP_CONVERT_RGB, true);
-    }
 #else
+<<<<<<< HEAD
     ids.create_trackbars();
     pthread_mutex_init(&algorithm_signal_mutex,NULL);
     ids.initialize_camera();
@@ -104,11 +90,13 @@ int main()
     {
          std::cout << "Thread started" << std::endl;
     }
+=======
+    ids.init();
+>>>>>>> IDS
 #endif
 #else
-#ifndef IDS_MODE
     // Video read init
-    cv::VideoCapture video("/home/mateusz/Videos/sample_selfie/output_1.mp4");
+    cv::VideoCapture video("/home/mateusz/Videos/sample_selfie/out_1.avi");
     // Check
     if(!video.isOpened())
     {
@@ -117,13 +105,7 @@ int main()
         return 0;
     }
 #endif
-#endif
 
-    int metoda = 1;
-    int typ = 1;
-    int blok_i = 25;
-    int blok = blok_i*2+1;
-    int c = 15;
 
     // Init shm
     shm_lane_points.init();
@@ -133,36 +115,24 @@ int main()
     // Declarations of cv::Mat
     cv::Mat frame(CAM_RES_Y, CAM_RES_X, CV_8UC3);
     cv::Mat frame_hls(CAM_RES_Y, CAM_RES_X, CV_8UC3);
-    cv::Mat frame_blur(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_bird(CAM_RES_Y, CAM_RES_X, CV_8UC1);
+    cv::Mat frame_bird(1000, 1000, CV_8UC1);
     std::vector<cv::Mat> frame_split_vec(3);
+
     cv::Mat frame_h(CAM_RES_Y, CAM_RES_X, CV_8UC1);
     cv::Mat frame_l(CAM_RES_Y, CAM_RES_X, CV_8UC1);
     cv::Mat frame_s(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-#ifdef ADAPTIVE_MODE
-    cv::Mat frame_l_adapt(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_s_adapt(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_l_morph(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_s_morph(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-#else
+
     cv::Mat frame_binary_h(CAM_RES_Y, CAM_RES_X, CV_8UC1);
     cv::Mat frame_binary_l(CAM_RES_Y, CAM_RES_X, CV_8UC1);
     cv::Mat frame_binary_s(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_and(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_morph(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-    cv::Mat frame_sobel(CAM_RES_Y, CAM_RES_X, CV_8UC1);
-#endif
+
+    cv::Mat frame_morph_h(CAM_RES_Y, CAM_RES_X, CV_8UC1);
+    cv::Mat frame_morph_l(CAM_RES_Y, CAM_RES_X, CV_8UC1);
+    cv::Mat frame_morph_s(CAM_RES_Y, CAM_RES_X, CV_8UC1);
+
     cv::Mat frame_data(CAM_RES_Y, CAM_RES_X, CV_8UC3);
     cv::Mat frame_bird_inverse(CAM_RES_Y, CAM_RES_X, CV_8UC1);
     cv::Mat frame_settings(1, 580, CV_8UC1);
-
-#ifdef STOP_L_MODE
-    //cv::Mats used in stoplight algorythm
-    cv::Mat old_frame(CAM_RES_Y,CAM_RES_X,CV_8UC1);
-    cv::Mat display;
-    cv::Mat diffrence(CAM_RES_Y,CAM_RES_X,CV_8UC1);
-
-#endif
 
 #ifdef TEST_SHM
     cv::Mat frame_test_shm(CAM_RES_Y, CAM_RES_X, CV_8UC3);
@@ -173,45 +143,35 @@ int main()
     cv::namedWindow("Camera", cv::WINDOW_AUTOSIZE);
     cv::moveWindow("Camera", 0, 0);
     cv::namedWindow("Bird Eye", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Bird Eye", 705, 0);
+    cv::moveWindow("Bird Eye", 700, 0);
 
-#ifndef ADAPTIVE_MODE
-    cv::namedWindow("Morph and", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Morph and", 1300, 0);
-    cv::namedWindow("Sobel", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Sobel", 0, 410);
-#else
-    cv::namedWindow("L morph", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("L morph", 1340, 410);
-    cv::namedWindow("S morph", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("S morph", 0, 0);
-#endif
+    cv::namedWindow("Binary H", cv::WINDOW_AUTOSIZE);
+    cv::moveWindow("Binary H", 0, 385);
+    cv::namedWindow("Binary L", cv::WINDOW_AUTOSIZE);
+    cv::moveWindow("Binary L", 0, 385);
+    cv::namedWindow("Binary S", cv::WINDOW_AUTOSIZE);
+    cv::moveWindow("Binary S", 0, 385);
 
     cv::namedWindow("Data inverse", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Data inverse", 705, 410);
+    cv::moveWindow("Data inverse", 0, 0);
     cv::namedWindow("Settings", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Settings", 0, 410);
+    cv::moveWindow("Settings", 600, 385);
+
+#ifndef VID_MODE
+#ifndef IDS_MODE
+    cv::namedWindow("CAM Settings", cv::WINDOW_AUTOSIZE);
+    cv::moveWindow("CAM Settings", 750, 385);
+#endif
+#endif
+#endif
 
 #ifdef VERBOSE_MODE
-#ifdef ADAPTIVE_MODE
-    cv::namedWindow("Blur", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Blur", 1300, 100);
+    cv::namedWindow("H", cv::WINDOW_AUTOSIZE);
+    cv::moveWindow("H", 1300, 200);
     cv::namedWindow("L", cv::WINDOW_AUTOSIZE);
     cv::moveWindow("L", 1300, 200);
     cv::namedWindow("S", cv::WINDOW_AUTOSIZE);
     cv::moveWindow("S", 1300, 300);
-    cv::namedWindow("Binary h", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Binary h", 1300, 400);
-    cv::namedWindow("Binary s", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("Binary s", 1300, 500);
-    cv::namedWindow("AND", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("AND", 1300, 600);
-#else
-    cv::namedWindow("H", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("H", 1300, 200);
-    cv::namedWindow("S", cv::WINDOW_AUTOSIZE);
-    cv::moveWindow("S", 1300, 300);
-#endif
     cv::namedWindow("Data", cv::WINDOW_AUTOSIZE);
     cv::moveWindow("Data", 1300, 700);
 #endif
@@ -220,19 +180,29 @@ int main()
     cv::namedWindow("SHM TEST", cv::WINDOW_AUTOSIZE);
     cv::moveWindow("SHM TEST", 1300, 700);
 #endif
-#endif
+
+    // Threshold variables
+    int thresh_h_low = 24;
+    int thresh_h_high = 28;
+    int thresh_l_low = 0;
+    int thresh_l_high = 180;
+    int thresh_s_low = 50;
+    int thresh_s_high = 255;
+    int thresh_hist = 100;
+
+    uint32_t h_l_s = 1; // 0 -H, 1 - L, 2 - S
 
     // Bird Eye first calculation
-    lanedetector.calculate_bird_var(frame_ref);
+    lanedetector.calculate_bird_var(frame_ref, frame_ref_inv);
 
     // Detection areas, count from the bottom to the top of the cv::Mat
-    DetectionArea area_left_line[DETECTION_NUMBER];
+    DetectionArea area_line[DETECTION_NUMBER];
 
     //Init def values
-    area_left_line[0].init(cv::Point(320, 320));
-    area_left_line[1].init(cv::Point(320, 270));
-    area_left_line[2].init(cv::Point(320, 220));
-    area_left_line[3].init(cv::Point(320, 170));
+    for(int i = 0; i < DETECTION_NUMBER; i++)
+    {
+        area_line[i].init(cv::Point(320, 320 - 40*i));
+    }
 
     // Detected points
     std::vector<cv::Point> left_points;
@@ -240,8 +210,8 @@ int main()
     std::vector<cv::Point> cones_points;
 
     // Scene variables
-    bool reset = false;
-    bool red_light_visible = true;
+    bool reset_stm = false;
+    bool red_light_visible = false;
     bool green_light_visible = false;
 
 #ifdef DEBUG_MODE
@@ -249,8 +219,8 @@ int main()
     char keypressed;
 #endif
 
-#ifdef DEBUG_MODE
     // Trackbars
+<<<<<<< HEAD
     cv::createTrackbar("f", "Settings", &lanedetector.f_i, 1000, update_trackbar);
     cv::createTrackbar("dst", "Settings", &lanedetector.dist_i, 1000, update_trackbar);
     cv::createTrackbar("alpha", "Settings", &lanedetector.alpha_i, 200, update_trackbar);
@@ -258,12 +228,26 @@ int main()
     cv::createTrackbar("l high", "Settings", &thresh_l_high, 255, NULL);
     cv::createTrackbar("s low", "Settings", &thresh_s_low, 255, NULL);
     cv::createTrackbar("s high", "Settings", &thresh_s_high, 255, NULL);
+=======
+#ifdef DEBUG_MODE
+#ifndef IDS_MODE
+#ifndef VID_MODE
+    kurokesu.trackbars();
+#endif
+#endif
+    cv::createTrackbar("f", "Settings", &lanedetector.f_i, 1000, update_bird_eye);
+    cv::createTrackbar("dst", "Settings", &lanedetector.dist_i, 500, update_bird_eye);
+    cv::createTrackbar("dst_inv", "Settings", &lanedetector.dist_inv_i, 500, update_bird_eye);
+    cv::createTrackbar("alpha", "Settings", &lanedetector.alpha_i, 200, update_bird_eye);
+    cv::createTrackbar("CUT Y", "Settings", &lanedetector.cut_y, 50, NULL);
+    cv::createTrackbar("H low", "Settings", &thresh_h_low, 255, NULL);
+    cv::createTrackbar("H high", "Settings", &thresh_h_high, 255, NULL);
+    cv::createTrackbar("L low", "Settings", &thresh_l_low, 255, NULL);
+    cv::createTrackbar("L high", "Settings", &thresh_l_high, 255, NULL);
+    cv::createTrackbar("S low", "Settings", &thresh_s_low, 255, NULL);
+    cv::createTrackbar("S high", "Settings", &thresh_s_high, 255, NULL);
+>>>>>>> IDS
     cv::createTrackbar("t hist", "Settings", &thresh_hist, 255, NULL);
-    cv::createTrackbar("t stop", "Settings", &thresh_stop, 255, NULL);
-    cv::createTrackbar("method", "Settings", &metoda, 1, NULL);
-    cv::createTrackbar("inv", "Settings", &typ, 1, NULL);
-    cv::createTrackbar("bl size", "Settings", &blok_i, 100, NULL);
-    cv::createTrackbar("C", "Settings", &c, 255, NULL);
 #endif
 
     ids.update_params();
@@ -276,21 +260,26 @@ int main()
     float fps = 0;
 #endif
 
-START:
-
     // Pre-scan
     // Get new frame
 #ifndef VID_MODE
 #ifndef IDS_MODE
+<<<<<<< HEAD
     camera >> frame;
+=======
+    for(int i = 0; i < 30; i++)
+        kurokesu.camera >> frame;
+>>>>>>> IDS
 #else
-    pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-    pthread_mutex_lock(&ids.frame_mutex);
-    ids.ids_frame.copyTo(frame);
-    pthread_mutex_unlock(&ids.frame_mutex);
+    for(int i = 0; i < 40; i++)
+        ids.get_frame_to(frame);
 #endif
 #else
+<<<<<<< HEAD
 //video >> frame;
+=======
+    video >> frame;
+>>>>>>> IDS
 #endif
 /*...*/ STOP_TIMER("Get new frame")
 
@@ -315,6 +304,7 @@ START:
     frame_s = frame_split_vec[2];
 /*...*/ STOP_TIMER("Channels split")
 
+<<<<<<< HEAD
 #ifdef ADAPTIVE_MODE
 /*...*/ START_TIMER
 //        cv::adaptiveThreshold(frame_l, frame_l_adapt, 255, metoda, typ, blok, c);
@@ -332,13 +322,39 @@ START:
     {
         // Take new ROI based on previous frame
         area_left_line[i].update(frame_s_morph);
+=======
+    switch(h_l_s)
+    {
+    case 0:
+    {
+        // Binarize channels
+        lanedetector.binarize(frame_h, frame_binary_h, thresh_h_low, thresh_h_high);
 
-        // Detect position of the line relative to the ROI
-        area_left_line[i].find_center(thresh_hist);
+        // Opening operation
+        lanedetector.opening(frame_binary_h, frame_morph_h);
 
-        // Corect position of ROI if outside cv::Mat
-        area_left_line[i].check_boundaries();
+        // Calculate new ROI's positions
+        for(int i = 0; i < DETECTION_NUMBER; i++)
+        {
+            // Take new ROI based on previous frame
+            area_line[i].update(frame_morph_h);
+
+            // Detect position of the line relative to the ROI
+            area_line[i].find_center(thresh_hist);
+>>>>>>> IDS
+
+            // Set standard ROI size
+            area_line[i].roi_x = ROI_X;
+
+            // Corect position of ROI if outside cv::Mat
+            area_line[i].check_boundaries();
+        }
+
+        // Pull back lost ROI's
+//        lanedetector.correct_ROIs(area_line, frame_morph_h);
+        break;
     }
+<<<<<<< HEAD
 /*...*/ STOP_TIMER("ROI's positioning")
 
 /*...*/ START_TIMER
@@ -365,16 +381,66 @@ START:
 
     // Obtain gradient points
     //lanedetector.apply_sobel(frame_morph, frame_sobel);
-
-    // Calculate new ROI's positions
-    for(int i = 0; i < DETECTION_NUMBER; i++)
+=======
+    case 1:
     {
+        // Binarize channels
+        lanedetector.binarize(frame_l, frame_binary_l, thresh_l_low, thresh_l_high);
+
+        // NOT
+        cv::bitwise_not(frame_binary_l, frame_binary_l);
+
+        // Opening operation
+        lanedetector.opening(frame_binary_l, frame_morph_l);
+
+        // Calculate new ROI's positions
+        for(int i = 0; i < DETECTION_NUMBER; i++)
+        {
+            // Take new ROI based on previous frame
+            area_line[i].update(frame_morph_l);
+
+            // Detect position of the line relative to the ROI
+            area_line[i].find_center(thresh_hist);
+>>>>>>> IDS
+
+            // Set standard ROI size
+            area_line[i].roi_x = ROI_X;
+
+            // Corect position of ROI if outside cv::Mat
+            area_line[i].check_boundaries();
+        }
+
+        // Pull back lost ROI's
+//        lanedetector.correct_ROIs(area_line, frame_morph_l);
+        break;
+
+    }
+    case 2:
+    {
+<<<<<<< HEAD
         // Take new ROI based on previous frame
         area_left_line[i].update(frame_binary_s);
+=======
+        // Binarize channels
+        lanedetector.binarize(frame_s, frame_binary_s, thresh_s_low, thresh_s_high);
 
-        // Detect position of the line relative to the ROI
-        area_left_line[i].find_center(thresh_hist);
+        // Opening operation
+        lanedetector.opening(frame_binary_s, frame_morph_s);
 
+        // Calculate new ROI's positions
+        for(int i = 0; i < DETECTION_NUMBER; i++)
+        {
+            // Take new ROI based on previous frame
+            area_line[i].update(frame_morph_s);
+>>>>>>> IDS
+
+            // Detect position of the line relative to the ROI
+            area_line[i].find_center(thresh_hist);
+
+            // Set standard ROI size
+            area_line[i].roi_x = ROI_X;
+
+<<<<<<< HEAD
         // Corect position of ROI if outside cv::Mat
         area_left_line[i].check_boundaries();
     }
@@ -385,6 +451,21 @@ START:
 #ifdef DEBUG_MODE
     // Draw detection
     lanedetector.draw_data(frame_bird, area_left_line, NULL);
+=======
+            // Corect position of ROI if outside cv::Mat
+            area_line[i].check_boundaries();
+        }
+
+        // Pull back lost ROI's
+//        lanedetector.correct_ROIs(area_line, frame_morph_s);
+        break;
+    }
+    }
+
+#ifdef DEBUG_MODE
+    // Draw detection
+    lanedetector.draw_data(frame_bird, area_line);
+>>>>>>> IDS
 
     // Inverse data to original camera perspective
     lanedetector.bird_eye_inverse(frame_bird, frame_bird_inverse);
@@ -392,85 +473,12 @@ START:
 
 
     // Pack data for SHM
-    lanedetector.pack_data(area_left_line, NULL, left_points, right_points);
+    lanedetector.pack_data(area_line, left_points);
 
     // Push output data to SHM
     shm_lane_points.push_lane_data(left_points, right_points, cones_points);
-    shm_usb_to_send.push_scene_data(reset, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
-
-    // Set standard ROI size
-    for(int i = 0; i < DETECTION_NUMBER; i++)
-        area_left_line[i].roi_x = ROI_X;
+    shm_usb_to_send.push_scene_data(reset_stm, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
     // End of first scan
-
-    //
-    static int denom=0;
-
-#ifdef STOP_L_MODE
-    for(int i = 0; i < 15; i++)
-    {
-#ifndef VID_MODE
-#ifndef IDS_MODE
-        camera >> frame;
-#else
-        pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-        pthread_mutex_lock(&ids.frame_mutex);
-        ids.ids_frame.copyTo(frame);
-        pthread_mutex_unlock(&ids.frame_mutex);
-#endif
-#else
-        video >> frame;
-#endif
-        lightDetector.prepare_first_image(frame,old_frame,lightDetector.roi_number);
-    }
-
-    while(true)
-    {
-#ifndef VID_MODE
-#ifndef IDS_MODE
-        camera >> frame;
-#else
-        pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-        pthread_mutex_lock(&ids.frame_mutex);
-        ids.ids_frame.copyTo(frame);
-        pthread_mutex_unlock(&ids.frame_mutex);
-#endif
-#else
-        video >> frame;
-#endif
-
-#ifdef VERBOSE_MODE
-        lightDetector.test_roi(frame,display);
-#endif
-        lightDetector.find_start(frame,diffrence,old_frame,lightDetector.roi_number);
-
-#ifdef DEBUG_MODE
-        if (++denom>5)
-        {
-            denom = 0;
-            cv::imshow("Frame", frame);
-            cv::imshow("Light detection", diffrence);
-#ifdef VERBOSE_MODE
-            cv::imshow("ROI", display);
-#endif
-            keypressed = (char)cv::waitKey(FRAME_TIME);
-
-            if(keypressed == 27)
-                    break;
-        }
-#endif
-
-        if (lightDetector.start_light == true)
-        {
-                //std::cout<<"START"<<std::endl;
-                red_light_visible = false;
-                green_light_visible = true;
-                break;
-        }
-        //else
-                //std::cout<<"WAIT"<<std::endl;
-    }
-#endif
 
      // ========================Main loop ==================================
 #ifndef VID_MODE
@@ -490,15 +498,16 @@ START:
         // Get new frame
 #ifndef VID_MODE
 #ifndef IDS_MODE
-        camera >> frame;
+        kurokesu.camera >> frame;
 #else
-        pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-        pthread_mutex_lock(&ids.frame_mutex);
-        ids.ids_frame.copyTo(frame);
-        pthread_mutex_unlock(&ids.frame_mutex);
+        ids.get_frame_to(frame);
 #endif
 #else
+<<<<<<< HEAD
     //video >> frame;
+=======
+        //video >> frame;
+>>>>>>> IDS
 #endif
 /*...*/ STOP_TIMER("Get new frame")
 
@@ -523,6 +532,7 @@ START:
         frame_s = frame_split_vec[2];
 /*...*/ STOP_TIMER("Channels split")
 
+<<<<<<< HEAD
 #ifdef ADAPTIVE_MODE
 /*...*/ START_TIMER
 //        cv::adaptiveThreshold(frame_l, frame_l_adapt, 255, metoda, typ, blok, c);
@@ -540,10 +550,28 @@ START:
         {
             // Take new ROI based on previous frame
             area_left_line[i].update(frame_s_morph);
+=======
+        switch(h_l_s)
+        {
+        case 0:
+        {
+            // Binarize channels
+            lanedetector.binarize(frame_h, frame_binary_h, thresh_h_low, thresh_h_high);
 
-            // Detect position of the line relative to the ROI
-            area_left_line[i].find_center(thresh_hist);
+            // Opening operation
+            lanedetector.opening(frame_binary_h, frame_morph_h);
 
+            // Calculate new ROI's positions
+            for(int i = 0; i < DETECTION_NUMBER; i++)
+            {
+                // Take new ROI based on previous frame
+                area_line[i].update(frame_morph_h);
+>>>>>>> IDS
+
+                // Detect position of the line relative to the ROI
+                area_line[i].find_center(thresh_hist);
+
+<<<<<<< HEAD
             // Corect position of ROI if outside cv::Mat
             area_left_line[i].check_boundaries();
         }
@@ -573,26 +601,99 @@ START:
 
         // Obtain gradient points
         //lanedetector.apply_sobel(frame_morph, frame_sobel);
+=======
+                // Set standard ROI size
+                area_line[i].roi_x = ROI_X;
 
-        // Calculate new ROI's positions
-        for(int i = 0; i < DETECTION_NUMBER; i++)
+                // Corect position of ROI if outside cv::Mat
+                area_line[i].check_boundaries();
+            }
+
+            // Pull back lost ROI's
+            lanedetector.correct_ROIs(area_line, frame_morph_h);
+            break;
+        }
+        case 1:
         {
+#ifdef AUTO_THRESH
+            // Calculate thresh
+            lanedetector.calculate_thresh(frame_l, area_line);
+#else
+            // Binarize channels
+            lanedetector.binarize(frame_l, frame_binary_l, thresh_l_low, thresh_l_high);
+#endif
+            // NOT
+            cv::bitwise_not(frame_binary_l, frame_binary_l);
+
+            // Opening operation
+            lanedetector.opening(frame_binary_l, frame_morph_l);
+
+            // Calculate new ROI's positions
+            for(int i = 0; i < DETECTION_NUMBER; i++)
+            {
+                // Take new ROI based on previous frame
+                area_line[i].update(frame_morph_l);
+
+                // Detect position of the line relative to the ROI
+                area_line[i].find_center(thresh_hist);
+>>>>>>> IDS
+
+                // Set standard ROI size
+                area_line[i].roi_x = ROI_X;
+
+                // Corect position of ROI if outside cv::Mat
+                area_line[i].check_boundaries();
+            }
+
+            // Pull back lost ROI's
+            lanedetector.correct_ROIs(area_line, frame_morph_l);
+            break;
+
+        }
+        case 2:
+        {
+<<<<<<< HEAD
             // Take new ROI based on previous frame
             area_left_line[i].update(frame_binary_s);
+=======
+            // Binarize channels
+            lanedetector.binarize(frame_s, frame_binary_s, thresh_s_low, thresh_s_high);
+>>>>>>> IDS
 
-            // Detect position of the line relative to the ROI
-            area_left_line[i].find_center(thresh_hist);
+            // Opening operation
+            lanedetector.opening(frame_binary_s, frame_morph_s);
 
-            // Corect position of ROI if outside cv::Mat
-            area_left_line[i].check_boundaries();
+            // Calculate new ROI's positions
+            for(int i = 0; i < DETECTION_NUMBER; i++)
+            {
+                // Take new ROI based on previous frame
+                area_line[i].update(frame_morph_s);
+
+                // Detect position of the line relative to the ROI
+                area_line[i].find_center(thresh_hist);
+
+                // Set standard ROI size
+                area_line[i].roi_x = ROI_X;
+
+                // Corect position of ROI if outside cv::Mat
+                area_line[i].check_boundaries();
+            }
+
+            // Pull back lost ROI's
+            lanedetector.correct_ROIs(area_line, frame_morph_s);
+            break;
+        }
         }
 
+<<<<<<< HEAD
         // Pull back lost ROI's
         //lanedetector.correct_ROIs(area_left_line, frame_morph);
 #endif
+=======
+>>>>>>> IDS
 #ifdef DEBUG_MODE
         // Draw detection
-        lanedetector.draw_data(frame_bird, area_left_line, NULL);
+        lanedetector.draw_data(frame_bird, area_line);
 
         // Inverse data to original camera perspective
         lanedetector.bird_eye_inverse(frame_bird, frame_bird_inverse);
@@ -600,25 +701,31 @@ START:
 
 /*...*/ START_TIMER
         // Pack data for SHM
+<<<<<<< HEAD
         lanedetector.pack_data(area_left_line, NULL, left_points, right_points);
 /*...*/ STOP_TIMER("Pack data for SHM")
+=======
+        lanedetector.pack_data(area_line, left_points);
+>>>>>>> IDS
 
 /*...*/ START_TIMER
         // Push output data to SHM
         shm_lane_points.push_lane_data(left_points, right_points, cones_points);
+<<<<<<< HEAD
         shm_usb_to_send.push_scene_data(reset, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
 /*...*/ STOP_TIMER("Push data to SHM")
+=======
+        shm_usb_to_send.push_scene_data(reset_stm, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
+>>>>>>> IDS
 
 #ifdef TEST_SHM
         shm_lane_points.pull_lane_data(frame_test_shm);
         shm_usb_to_send.pull_scene_data();
 #endif
 
-        //
-        blok = blok_i*2+1;
-
 #ifdef DEBUG_MODE
         // Show frames
+<<<<<<< HEAD
 #ifdef IDS_MODE
         if (++denom>5)
         {
@@ -657,42 +764,71 @@ START:
         //cv::imshow("AND", frame_and);
 #endif
         //cv::imshow("Data", frame_data);
+=======
+        cv::imshow("Camera", frame);
+        cv::imshow("Bird Eye", frame_bird);
+
+        cv::imshow("Binary H", frame_morph_h);
+        cv::imshow("Binary L", frame_morph_l);
+        cv::imshow("Binary S", frame_morph_s);
+
+        cv::imshow("Data inverse", frame_bird_inverse);
+        cv::imshow("Settings", frame_settings);
+
+#ifndef VID_MODE
+#ifndef IDS_MODE
+        cv::imshow("CAM Settings", frame_settings);
 #endif
+#endif
+
+#ifdef VERBOSE_MODE
+        cv::imshow("H", frame_h);
+        cv::imshow("L", frame_l);
+        cv::imshow("S", frame_s);
+        cv::imshow("Data", frame_data);
+        frame_data = cv::Mat::zeros(CAM_RES_Y, CAM_RES_X, CV_8UC3);
+>>>>>>> IDS
+#endif
+
 #ifdef TEST_SHM
         cv::imshow("SHM TEST", frame_test_shm);
         frame_test_shm = cv::Mat::zeros(CAM_RES_Y, CAM_RES_X, CV_8UC3);
 #endif
-        // Clear cv::Mat's
-        frame_data = cv::Mat::zeros(CAM_RES_Y, CAM_RES_X, CV_8UC3);
 
+<<<<<<< HEAD
         // Reset from Futaba
         //std::cout << "RESET: " << shm_usb_to_send.shared_variable[1] << std::endl; //++++++++++++++++++++++++++++++
         if(shm_usb_to_send.shared_variable[1] > 0)
+=======
+        // Get input from user
+        keypressed = (char)cv::waitKey(FRAME_TIME);
+
+        // Process given input
+        if( keypressed == 27 )
+            break;
+
+        switch(keypressed)
         {
-#ifdef STOP_L_MODE
-            lightDetector.start_light = false;
-            red_light_visible = true;
-            green_light_visible = false;
-#endif
+        // Reset ROI positions
+        case 'r':
+>>>>>>> IDS
+        {
             // Reset
             for(int i = 0; i < DETECTION_NUMBER; i++)
             {
-                area_left_line[i].reset();
+                area_line[i].reset();
             }
 
-            // Pre scan
+            // Pre-scan
             // Get new frame
 #ifndef VID_MODE
 #ifndef IDS_MODE
-        camera >> frame;
+            kurokesu.camera >> frame;
 #else
-        pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-        pthread_mutex_lock(&ids.frame_mutex);
-        ids.ids_frame.copyTo(frame);
-        pthread_mutex_unlock(&ids.frame_mutex);
+            ids.get_frame_to(frame);
 #endif
 #else
-        video >> frame;
+            video >> frame;
 #endif
             // Change perspective
             //cv::GaussianBlur(frame, frame_blur, cv::Size(3,3), 0, 0);
@@ -707,51 +843,17 @@ START:
             frame_l = frame_split_vec[1];
             frame_s = frame_split_vec[2];
 
-#ifdef ADAPTIVE_MODE
-            cv::adaptiveThreshold(frame_l, frame_l_adapt, 255, metoda, typ, blok, c);
-            cv::adaptiveThreshold(frame_s, frame_s_adapt, 255, metoda, typ, blok, c);
-
-            lanedetector.opening(frame_l_adapt, frame_l_morph);
-            lanedetector.opening(frame_s_adapt, frame_s_morph);
-
-            // Calculate new ROI's positions
-            for(int i = 0; i < DETECTION_NUMBER; i++)
+            switch(h_l_s)
             {
-                // Take new ROI based on previous frame
-                area_left_line[i].update(frame_s_morph);
-
-                // Detect position of the line relative to the ROI
-                area_left_line[i].find_center(thresh_hist);
-
-                // Corect position of ROI if outside cv::Mat
-                area_left_line[i].check_boundaries();
-            }
-
-            // Pull back lost ROI's
-            //lanedetector.correct_ROIs(area_left_line, frame_s_morph);
-#else
-            // Binarize channels
-            lanedetector.binarize(frame_h, frame_binary_h, thresh_h_low, thresh_h_high);
-            lanedetector.binarize(frame_s, frame_binary_s, thresh_s_low, thresh_s_high);
-
-            // Logical conjunction of H and S channel
-            cv::bitwise_and(frame_binary_h, frame_binary_s, frame_and);
-
-            // Opening operation
-            lanedetector.opening(frame_and, frame_morph);
-
-            // Obtain gradient points
-            lanedetector.apply_sobel(frame_morph, frame_sobel);
-
-            // Calculate new ROI's positions
-            for(int i = 0; i < DETECTION_NUMBER; i++)
+            case 0:
             {
-                // Take new ROI based on previous frame
-                area_left_line[i].update(frame_morph);
+                // Binarize channels
+                lanedetector.binarize(frame_h, frame_binary_h, thresh_h_low, thresh_h_high);
 
-                // Detect position of the line relative to the ROI
-                area_left_line[i].find_center(thresh_hist);
+                // Opening operation
+                lanedetector.opening(frame_binary_h, frame_morph_h);
 
+<<<<<<< HEAD
                 // Corect position of ROI if outside cv::Mat
                 area_left_line[i].check_boundaries();
             }
@@ -762,111 +864,84 @@ START:
 #ifdef DEBUG_MODE
             // Draw detection
             //lanedetector.draw_data(frame_bird, area_left_line, NULL);
+=======
+                // Calculate new ROI's positions
+                for(int i = 0; i < DETECTION_NUMBER; i++)
+                {
+                    // Take new ROI based on previous frame
+                    area_line[i].update(frame_morph_h);
 
-            // Inverse data to original camera perspective
-            lanedetector.bird_eye_inverse(frame_bird, frame_bird_inverse);
-#endif
+                    // Detect position of the line relative to the ROI
+                    area_line[i].find_center(thresh_hist);
+>>>>>>> IDS
 
-            // Pack data for SHM
-            lanedetector.pack_data(area_left_line, NULL, left_points, right_points);
+                    // Set standard ROI size
+                    area_line[i].roi_x = ROI_X;
 
-            // Push output data to SHM
-            shm_lane_points.push_lane_data(left_points, right_points, cones_points);
-            shm_usb_to_send.push_scene_data(reset, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
+                    // Corect position of ROI if outside cv::Mat
+                    area_line[i].check_boundaries();
+                }
 
-
-            // Set standard ROI size
-            for(int i = 0; i < DETECTION_NUMBER; i++)
-                area_left_line[i].roi_x = ROI_X;
-            // End of first scan
-        }
-
-        // Process given input
-        if( keypressed == 27 )
-            break;
-        switch(keypressed)
-        {
-        // Reset ROI positions
-        case 'r':
-        {
-            // Reset
-            for(int i = 0; i < DETECTION_NUMBER; i++)
-            {
-                area_left_line[i].reset();
+                // Pull back lost ROI's
+        //        lanedetector.correct_ROIs(area_line, frame_morph_h);
+                break;
             }
-
-            // Pre scan
-            // Get new frame
-        #ifndef VID_MODE
-        #ifndef IDS_MODE
-        camera >> frame;
-        #else
-        pthread_cond_wait(&algorithm_signal, &algorithm_signal_mutex);
-        pthread_mutex_lock(&ids.frame_mutex);
-        ids.ids_frame.copyTo(frame);
-        pthread_mutex_unlock(&ids.frame_mutex);
-        #endif
-        #else
-        video >> frame;
-        #endif
-            // Change perspective
-            //cv::GaussianBlur(frame, frame_blur, cv::Size(3,3), 0, 0);
-            lanedetector.bird_eye(frame, frame_bird);
-
-            // Obtain HLS color space image
-            cv::cvtColor(frame_bird, frame_hls, cv::COLOR_BGR2HLS);
-
-            // Split channels
-            cv::split(frame_hls, frame_split_vec);
-            frame_h = frame_split_vec[0];
-            frame_l = frame_split_vec[1];
-            frame_s = frame_split_vec[2];
-
-        #ifdef ADAPTIVE_MODE
-            cv::adaptiveThreshold(frame_l, frame_l_adapt, 255, metoda, typ, blok, c);
-            cv::adaptiveThreshold(frame_s, frame_s_adapt, 255, metoda, typ, blok, c);
-
-            lanedetector.opening(frame_l_adapt, frame_l_morph);
-            lanedetector.opening(frame_s_adapt, frame_s_morph);
-
-            // Calculate new ROI's positions
-            for(int i = 0; i < DETECTION_NUMBER; i++)
+            case 1:
             {
-                // Take new ROI based on previous frame
-                area_left_line[i].update(frame_s_morph);
+                // Binarize channels
+                lanedetector.binarize(frame_l, frame_binary_l, thresh_l_low, thresh_l_high);
 
-                // Detect position of the line relative to the ROI
-                area_left_line[i].find_center(thresh_hist);
+                // NOT
+                cv::bitwise_not(frame_binary_l, frame_binary_l);
 
-                // Corect position of ROI if outside cv::Mat
-                area_left_line[i].check_boundaries();
+                // Opening operation
+                lanedetector.opening(frame_binary_l, frame_morph_l);
+
+                // Calculate new ROI's positions
+                for(int i = 0; i < DETECTION_NUMBER; i++)
+                {
+                    // Take new ROI based on previous frame
+                    area_line[i].update(frame_morph_l);
+
+                    // Detect position of the line relative to the ROI
+                    area_line[i].find_center(thresh_hist);
+
+                    // Set standard ROI size
+                    area_line[i].roi_x = ROI_X;
+
+                    // Corect position of ROI if outside cv::Mat
+                    area_line[i].check_boundaries();
+                }
+
+                // Pull back lost ROI's
+        //        lanedetector.correct_ROIs(area_line, frame_morph_l);
+                break;
             }
-
-            // Pull back lost ROI's
-            //lanedetector.correct_ROIs(area_left_line, frame_s_morph);
-        #else
-            // Binarize channels
-            lanedetector.binarize(frame_h, frame_binary_h, thresh_h_low, thresh_h_high);
-            lanedetector.binarize(frame_s, frame_binary_s, thresh_s_low, thresh_s_high);
-
-            // Logical conjunction of H and S channel
-            cv::bitwise_and(frame_binary_h, frame_binary_s, frame_and);
-
-            // Opening operation
-            lanedetector.opening(frame_and, frame_morph);
-
-            // Obtain gradient points
-            lanedetector.apply_sobel(frame_morph, frame_sobel);
-
-            // Calculate new ROI's positions
-            for(int i = 0; i < DETECTION_NUMBER; i++)
+            case 2:
             {
-                // Take new ROI based on previous frame
-                area_left_line[i].update(frame_morph);
+                // Binarize channels
+                lanedetector.binarize(frame_s, frame_binary_s, thresh_s_low, thresh_s_high);
 
-                // Detect position of the line relative to the ROI
-                area_left_line[i].find_center(thresh_hist);
+                // Opening operation
+                lanedetector.opening(frame_binary_s, frame_morph_s);
 
+                // Calculate new ROI's positions
+                for(int i = 0; i < DETECTION_NUMBER; i++)
+                {
+                    // Take new ROI based on previous frame
+                    area_line[i].update(frame_morph_s);
+
+                    // Detect position of the line relative to the ROI
+                    area_line[i].find_center(thresh_hist);
+
+                    // Set standard ROI size
+                    area_line[i].roi_x = ROI_X;
+
+                    // Corect position of ROI if outside cv::Mat
+                    area_line[i].check_boundaries();
+                }
+
+<<<<<<< HEAD
                 // Corect position of ROI if outside cv::Mat
                 area_left_line[i].check_boundaries();
             }
@@ -875,24 +950,28 @@ START:
             //lanedetector.correct_ROIs(area_left_line, frame_morph);
         #endif
         #ifdef DEBUG_MODE
+=======
+                // Pull back lost ROI's
+        //        lanedetector.correct_ROIs(area_line, frame_morph_s);
+                break;
+            }
+            }
+
+#ifdef DEBUG_MODE
+>>>>>>> IDS
             // Draw detection
-            //lanedetector.draw_data(frame_bird, area_left_line, NULL);
+            lanedetector.draw_data(frame_bird, area_line);
 
             // Inverse data to original camera perspective
             lanedetector.bird_eye_inverse(frame_bird, frame_bird_inverse);
-        #endif
+#endif
 
             // Pack data for SHM
-            lanedetector.pack_data(area_left_line, NULL, left_points, right_points);
+            lanedetector.pack_data(area_line, left_points);
 
             // Push output data to SHM
             shm_lane_points.push_lane_data(left_points, right_points, cones_points);
-            shm_usb_to_send.push_scene_data(reset, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
-
-
-            // Set standard ROI size
-            for(int i = 0; i < DETECTION_NUMBER; i++)
-                area_left_line[i].roi_x = ROI_X;
+            shm_usb_to_send.push_scene_data(reset_stm, red_light_visible, green_light_visible, lanedetector.stop_detected, lanedetector.stop_distance);
             // End of first scan
 
             break;
@@ -900,16 +979,23 @@ START:
         // Change side on which line is searched
         case 'c':
         {
+            h_l_s++;
 
+            if(h_l_s >=3)
+            {
+                h_l_s = 0;
+            }
             break;
         }
-        case 'q':
-        {
-            lightDetector.start_light = false;
-            red_light_visible = true;
-            green_light_visible = false;
 
-            goto START;
+        case'q':
+        {
+            system("v4l2-ctl -d /dev/video1 --set-ctrl=gamma=500");
+            break;
+        }
+        case 'u':
+        {
+            kurokesu.update();
         }
         }
 #endif
@@ -934,55 +1020,17 @@ START:
 
     // Clean up
 #ifndef VID_MODE
-#ifndef IDS_MODE
-    camera.release();
-#else
-    ids.exit();
-#endif
+    kurokesu.camera.release();
 #else
     video.release();
 #endif
+
     shm_lane_points.close();
     shm_usb_to_send.close();
     return 0;
 }
 
-void update_trackbar(int, void*)
+void update_bird_eye(int, void*)
 {
-    lanedetector.calculate_bird_var(frame_ref);
-}
-
-void update_params_1(int, void*)
-{
-    ids.update_params();
-}
-
-
-void *camera_thread(void*)
-{
-    while(true)
-    {
-        ids.frame_loop();
-    }
-    return NULL;
-}
-
-// Creating in debug mode trackbars
-void IDS::create_trackbars(void)
-{
-    cvNamedWindow("ids", 1);
-    cv::createTrackbar("Pixel", "ids", &pixelclock_slider, 40, update_params_1);
-    cv::createTrackbar("Exposure", "ids", &exposure_slider, 500, update_params_1);
-    cv::createTrackbar("FPS", "ids", &fps_slider, 87, update_params_1);
-    cv::createTrackbar("Master", "ids", &Master_GAIN_Factor, 300, update_params_1);
-    cv::setTrackbarMin("Master", "ids", 100);
-    cv::createTrackbar("Green", "ids", &Green_GAIN_Factor, 300, update_params_1);
-    cv::setTrackbarMin("Green", "ids",100);
-    cv::createTrackbar("Red", "ids", &Red_GAIN_Factor, 300, update_params_1);
-    cv::setTrackbarMin("Red", "ids", 100);
-    cv::createTrackbar("Blue", "ids", &Blue_GAIN_Factor, 300, update_params_1);
-    cv::setTrackbarMin("Blue", "ids", 100);
-    cv::createTrackbar("Sharpness", "ids", &sharpness_slider, 9, update_params_1);
-    cv::setTrackbarMin("Sharpness", "ids", 0);
-    cv::createTrackbar("Gamma", "ids", &Gamma, 300, update_params_1);
+    lanedetector.calculate_bird_var(frame_ref, frame_ref_inv);
 }
